@@ -1,0 +1,6 @@
+crewai
+crewai-tools
+pyodbc
+boto3
+questionary>=2.1.0
+sqlparse
