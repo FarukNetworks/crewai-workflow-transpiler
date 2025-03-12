@@ -9,14 +9,15 @@ dotenv.load_dotenv()
 # Get all folder names from analysis directory
 procedures = []
 if os.path.exists("output/analysis"):
-    procedures = [folder for folder in os.listdir("output/analysis") if os.path.isdir(os.path.join("output/analysis", folder))]
+    procedures = [
+        folder
+        for folder in os.listdir("output/analysis")
+        if os.path.isdir(os.path.join("output/analysis", folder))
+    ]
 print(f"Discovered procedures: {procedures}")
 
 
-openai_config = LLM(
-    model="gpt-4o",
-    api_key=os.getenv("OPENAI_API_KEY")
-)
+openai_config = LLM(model="gpt-4o", api_key=os.getenv("OPENAI_API_KEY"))
 
 bedrock_config = LLM(
     model="bedrock/us.meta.llama3-3-70b-instruct-v1:0",
@@ -28,8 +29,7 @@ bedrock_config = LLM(
 )
 
 anthropic_config = LLM(
-    model="anthropic/claude-3-7-sonnet-20250219",
-    api_key=os.getenv("ANTHROPIC_API_KEY")
+    model="anthropic/claude-3-7-sonnet-20250219", api_key=os.getenv("ANTHROPIC_API_KEY")
 )
 
 
@@ -41,16 +41,31 @@ agent = Agent(
     goal="Analyze the stored procedure and provide integration Test Specification.",
     backstory="You are an experienced SQL developer with strong SQL skills analyzing stored procedures and understanding the business logic behind the code.",
     allow_code_execution=False,
-    llm=llm_config
+    llm=llm_config,
 )
 
 
-# Create Crew For Each Discovered Stored Procedure 
+# Create Crew For Each Discovered Stored Procedure
 for procedure in procedures:
     # Read meta data from JSON file
     with open(f"output/analysis/{procedure}/{procedure}_meta.json", "r") as f:
         meta_data = json.load(f)
-    
+
+    # Read business logic from JSON file
+    with open(f"output/analysis/{procedure}/{procedure}_business_logic.json", "r") as f:
+        business_logic = json.load(f)
+
+    dependency_folder = os.path.join("output/data", "procedure_dependencies.json")
+    with open(dependency_folder, "r") as f:
+        all_dependencies = json.load(f)
+
+    # Find the procedure with matching name in the dependencies list
+    dependencies = []
+    for proc in all_dependencies:
+        if proc.get("name") == procedure:
+            dependencies = proc.get("dependencies", [])
+            break
+
     # Create a task that requires code execution
     task = Task(
         description=f"""
@@ -119,7 +134,8 @@ Your output should be a valid, well-structured JSON document that follows the sc
 
 
 
-    META DATA: {meta_data}
+    BUSINESS LOGIC: {business_logic}
+    DEPENDENCIES: {dependencies}
         """,
         expected_output="""
    Your output should follow this structure:
@@ -302,14 +318,11 @@ Your output should be a valid, well-structured JSON document that follows the sc
 }
 
 }""",
-        agent=agent
+        agent=agent,
     )
 
     # Create a crew and add the task
-    crew = Crew(
-        agents=[agent],
-        tasks=[task]
-    )
+    crew = Crew(agents=[agent], tasks=[task])
 
     # Execute the crew
     result = str(crew.kickoff())
@@ -321,7 +334,9 @@ Your output should be a valid, well-structured JSON document that follows the sc
     os.makedirs(analysis_dir, exist_ok=True)
 
     # Save the result to a JSON file
-    with open(os.path.join(analysis_dir, f"{procedure}_integration_test_spec.json"), "w") as f:
+    with open(
+        os.path.join(analysis_dir, f"{procedure}_integration_test_spec.json"), "w"
+    ) as f:
         f.write(result.replace("```json", "").replace("```", ""))
 
 print("Integration test spec analysis completed for all procedures.")
