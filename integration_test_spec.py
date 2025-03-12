@@ -47,6 +47,10 @@ agent = Agent(
 
 # Create Crew For Each Discovered Stored Procedure
 for procedure in procedures:
+    # Read procedure definition from SQL file
+    with open(f"output/sql_raw/{procedure}/{procedure}.sql", "r") as f:
+        procedure_definition = f.read()
+
     # Read meta data from JSON file
     with open(f"output/analysis/{procedure}/{procedure}_meta.json", "r") as f:
         meta_data = json.load(f)
@@ -66,12 +70,28 @@ for procedure in procedures:
             dependencies = proc.get("dependencies", [])
             break
 
+    # business_rules
+    with open(f"output/analysis/{procedure}/{procedure}_business_rules.json", "r") as f:
+        business_rules = json.load(f)
+
+    # business_functions
+    with open(
+        f"output/analysis/{procedure}/{procedure}_business_functions.json", "r"
+    ) as f:
+        business_functions = json.load(f)
+
+    # business_processes
+    with open(
+        f"output/analysis/{procedure}/{procedure}_business_processes.json", "r"
+    ) as f:
+        business_processes = json.load(f)
+
     # Create a task that requires code execution
     task = Task(
         description=f"""
-        Analyze the stored procedure `{procedure}` and provide the following metadata clearly structured in JSON:
+# Integration Test Specification Prompt for SQL-to-C# Migration
 
-   ## Purpose
+## Purpose
 
 You are tasked with creating a comprehensive integration test specification in JSON format that will be used to verify feature parity between a SQL stored procedure and its C# repository pattern implementation.
 
@@ -79,18 +99,16 @@ You are tasked with creating a comprehensive integration test specification in J
 
 You have been provided with:
 
-1. A **Technical JSON specification** containing:
-   - Detailed business process definitions
-   - Data models and entity relationships
-   - Transaction boundaries
-   - Query patterns and business rules
-   - Input parameter specifications
-
-2. The original **SQL stored procedure code**
+## Input Files
+1. Contains extracted business rules with detailed metadata - [{business_rules}]
+2. Contains business functions that represent logical operations - [{business_functions}]
+3. Contains the overall process flow with error handling and transaction boundaries - [{business_processes}]
+4. The original SQL stored procedure (for reference) - [{procedure_definition}]
 
 ## Your Task
 
 Create a detailed JSON specification for integration tests that will verify complete feature parity between the SQL stored procedure and C# implementation. The specification should define all aspects of the tests without providing actual implementation code.
+
 
 ## Coverage Requirements
 
@@ -133,9 +151,6 @@ Before submitting your specification, verify:
 Your output should be a valid, well-structured JSON document that follows the schema above, with detailed specifications for comprehensive integration testing.
 
 
-
-    BUSINESS LOGIC: {business_logic}
-    DEPENDENCIES: {dependencies}
         """,
         expected_output="""
    Your output should follow this structure:
@@ -316,8 +331,8 @@ Your output should be a valid, well-structured JSON document that follows the sc
     }
   ]
 }
-
-}""",
+```
+""",
         agent=agent,
     )
 

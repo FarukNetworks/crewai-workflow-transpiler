@@ -14,14 +14,17 @@ connection_string = os.getenv("CONNECTION_STRING")
 connection = pyodbc.connect(connection_string)
 cursor = connection.cursor()
 
-cursor.execute("""
-SELECT 
+cursor.execute(
+    """
+SELECT TOP 460
     s.name + '.' + p.name AS name
 FROM sys.procedures p
 JOIN sys.schemas s ON p.schema_id = s.schema_id
-WHERE p.type = 'P' 
+WHERE p.type = 'P'
 AND p.name NOT LIKE 'tSQLt%'
-ORDER BY s.name, p.name;""")
+ORDER BY s.name, p.name;"""
+)
+
 procedures = cursor.fetchall()
 
 stored_procedures = []
@@ -30,37 +33,34 @@ for procedure in procedures:
 
 stored_procedures = [str(procedure) for procedure in stored_procedures]
 
+
 def select_procedures():
     # Create choices with SELECT ALL option at the top
-    procedure_choices = [
-        Choice(title="SELECT ALL", value="SELECT_ALL")
-    ] + [
+    procedure_choices = [Choice(title="SELECT ALL", value="SELECT_ALL")] + [
         Choice(title=proc, value=proc) for proc in stored_procedures
     ]
-    
+
     # Use checkbox selection (space to select, enter to confirm)
     selected = questionary.checkbox(
         "Select stored procedures (SPACE to select, ENTER to confirm):",
         choices=procedure_choices,
     ).ask()
-    
+
     if not selected:
         print("No procedures selected. Exiting.")
         exit()
-    
+
     # If SELECT ALL is chosen, return all procedures
     if "SELECT_ALL" in selected:
         return stored_procedures
-        
+
     return selected
+
 
 selected_procedures = select_procedures()
 print(f"Selected procedures: {selected_procedures}")
 
-openai_config = LLM(
-    model="gpt-4o",
-    api_key=os.getenv("OPENAI_API_KEY")
-)
+openai_config = LLM(model="gpt-4o", api_key=os.getenv("OPENAI_API_KEY"))
 
 bedrock_config = LLM(
     model="bedrock/us.meta.llama3-3-70b-instruct-v1:0",
@@ -73,10 +73,8 @@ bedrock_config = LLM(
 
 
 anthropic_config = LLM(
-    model="anthropic/claude-3-7-sonnet-20250219",
-    api_key=os.getenv("ANTHROPIC_API_KEY")
+    model="anthropic/claude-3-7-sonnet-20250219", api_key=os.getenv("ANTHROPIC_API_KEY")
 )
-
 
 
 llm_config = openai_config
@@ -87,23 +85,38 @@ coding_agent = Agent(
     goal="Analyze data and provide meta data about the stored procedure.",
     backstory="You are an experienced SQL developer with strong SQL skills.",
     allow_code_execution=False,
-    llm=llm_config
+    llm=llm_config,
 )
 
 for procedure_name in selected_procedures:
     # Get the procedure definition
-    cursor.execute(f"""SELECT definition FROM sys.sql_modules WHERE object_id = OBJECT_ID('{procedure_name}')""")
+    cursor.execute(
+        f"""SELECT definition FROM sys.sql_modules WHERE object_id = OBJECT_ID('{procedure_name}')"""
+    )
     procedure_definition = cursor.fetchone().definition
     # Remove SQL comments using sqlparse
-    procedure_definition = sqlparse.format(procedure_definition, strip_comments=True).strip()
+    procedure_definition = sqlparse.format(
+        procedure_definition, strip_comments=True
+    ).strip()
 
-    # Save Definition to sql-raw folder 
+    # Save Definition to sql-raw folder
     sql_dir = os.path.join("output/sql_raw", procedure_name)
     os.makedirs(sql_dir, exist_ok=True)
 
     # Save the result to a JSON file
     with open(os.path.join(sql_dir, f"{procedure_name}.sql"), "w") as f:
         f.write(procedure_definition)
+
+    # Get dependencies
+    with open(os.path.join("output/data", "procedure_dependencies.json"), "r") as f:
+        dependencies = json.load(f)
+
+    # Find the procedure with matching name in the dependencies list
+    dependencies = []
+    for proc in dependencies:
+        if proc.get("name") == procedure_name:
+            dependencies = proc.get("dependencies", [])
+            break
 
     # Create a task that requires code execution
     data_analysis_task = Task(
@@ -136,6 +149,7 @@ Task Steps
 	•	Provide test scenarios such as NULL_VALUE, BOUNDARY_CASE, and TYPICAL_CASE.
 
         Procedure Raw Code: {procedure_definition}
+        DEPENDENCIES: {dependencies}
         """,
         expected_output="""
 {
@@ -159,14 +173,11 @@ Task Steps
   "parameterUsage": [{"parameterName": "parameterName", "usage": "usage"}],
   "testValueCandidates": [{"parameterName": "parameterName", "testValues": ["testValue1", "testValue2"]}]
 }""",
-        agent=coding_agent
+        agent=coding_agent,
     )
 
     # Create a crew and add the task
-    analysis_crew = Crew(
-        agents=[coding_agent],
-        tasks=[data_analysis_task]
-    )
+    analysis_crew = Crew(agents=[coding_agent], tasks=[data_analysis_task])
 
     # Execute the crew
     result = str(analysis_crew.kickoff())
