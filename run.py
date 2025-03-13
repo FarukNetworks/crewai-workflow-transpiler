@@ -32,12 +32,12 @@ def run_script(command):
 
 def main():
     scripts = [
-        "business_logic.py",
+        "business_analyst.py",
         "integration_test_spec.py",
+        "implementation_planner.py",
         "sql_tests.py",
+        "implementation_executor.py",
         "document_process.py",
-        # "create_csharp_tests.py",
-        # "sql_to_csharp.py"
     ]
 
     for script in scripts:

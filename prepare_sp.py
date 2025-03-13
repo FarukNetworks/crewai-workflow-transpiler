@@ -7,8 +7,9 @@ import os
 import sqlparse
 import json
 
-dotenv.load_dotenv()
 
+dotenv.load_dotenv()
+print(os.getenv("CONNECTION_STRING"))
 connection_string = os.getenv("CONNECTION_STRING")
 
 connection = pyodbc.connect(connection_string)
@@ -73,11 +74,20 @@ bedrock_config = LLM(
 
 
 anthropic_config = LLM(
-    model="anthropic/claude-3-7-sonnet-20250219", api_key=os.getenv("ANTHROPIC_API_KEY")
+    model="anthropic/claude-3-7-sonnet-20250219",
+    api_key=os.getenv("ANTHROPIC_API_KEY"),
+    timeout=600,  # Increase from default to at least 10 minutes (600 seconds)
+    request_timeout=600,
+    max_retries=2,
+    max_tokens=64000,
 )
 
-
-llm_config = openai_config
+if os.getenv("LLM_CONFIG") == "bedrock":
+    llm_config = bedrock_config
+elif os.getenv("LLM_CONFIG") == "anthropic":
+    llm_config = anthropic_config
+else:
+    llm_config = openai_config
 
 # Create an agent with code execution enabled
 coding_agent = Agent(

@@ -17,7 +17,7 @@ if os.path.exists("output/analysis"):
 print(f"Discovered procedures: {procedures}")
 
 
-openai_config = LLM(model="gpt-4o", api_key=os.getenv("OPENAI_API_KEY"))
+openai_config = LLM(model="o3-mini", api_key=os.getenv("OPENAI_API_KEY"))
 
 bedrock_config = LLM(
     model="bedrock/us.meta.llama3-3-70b-instruct-v1:0",
@@ -29,11 +29,22 @@ bedrock_config = LLM(
 )
 
 anthropic_config = LLM(
-    model="anthropic/claude-3-7-sonnet-20250219", api_key=os.getenv("ANTHROPIC_API_KEY")
+    model="anthropic/claude-3-7-sonnet-20250219",
+    api_key=os.getenv("ANTHROPIC_API_KEY"),
+    timeout=600,  # Increase from default to at least 10 minutes (600 seconds)
+    request_timeout=600,
+    max_retries=2,
+    max_tokens=64000,
 )
 
 
-llm_config = openai_config
+if os.getenv("LLM_CONFIG") == "bedrock":
+    llm_config = bedrock_config
+elif os.getenv("LLM_CONFIG") == "anthropic":
+    llm_config = anthropic_config
+else:
+    llm_config = openai_config
+
 
 # Create a coding agent
 agent = Agent(
@@ -50,14 +61,6 @@ for procedure in procedures:
     # Read procedure definition from SQL file
     with open(f"output/sql_raw/{procedure}/{procedure}.sql", "r") as f:
         procedure_definition = f.read()
-
-    # Read meta data from JSON file
-    with open(f"output/analysis/{procedure}/{procedure}_meta.json", "r") as f:
-        meta_data = json.load(f)
-
-    # Read business logic from JSON file
-    with open(f"output/analysis/{procedure}/{procedure}_business_logic.json", "r") as f:
-        business_logic = json.load(f)
 
     dependency_folder = os.path.join("output/data", "procedure_dependencies.json")
     with open(dependency_folder, "r") as f:

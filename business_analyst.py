@@ -7,6 +7,8 @@ import re
 
 dotenv.load_dotenv()
 
+print(os.getenv("LLM_CONFIG"))
+
 # Get all folder names from analysis directory
 procedures = []
 if os.path.exists("output/analysis"):
@@ -31,15 +33,22 @@ bedrock_config = LLM(
 
 
 anthropic_config = LLM(
-    model="anthropic/claude-3-7-sonnet-20250219", api_key=os.getenv("ANTHROPIC_API_KEY")
+    model="anthropic/claude-3-7-sonnet-20250219",
+    api_key=os.getenv("ANTHROPIC_API_KEY"),
+    timeout=600,  # Increase from default to at least 10 minutes (600 seconds)
+    request_timeout=600,
+    max_retries=2,
+    max_tokens=64000,
 )
 
-if os.getenv("LLM_CONFIG") == "bedrock":
-    llm_config = bedrock_config
-elif os.getenv("LLM_CONFIG") == "anthropic":
-    llm_config = anthropic_config
-else:
-    llm_config = openai_config
+# if os.getenv("LLM_CONFIG") == "bedrock":
+#     llm_config = bedrock_config
+# elif os.getenv("LLM_CONFIG") == "anthropic":
+#     llm_config = anthropic_config
+# else:
+#     llm_config = openai_config
+
+llm_config = anthropic_config
 
 # Create a coding agent
 agent = Agent(
@@ -80,8 +89,6 @@ for procedure in procedures:
         description=f"""
  <behavior_rules> You have one mission: execute exactly what is requested. Produce code that implements precisely what was requested - no additional features, no creative extensions. Follow instructions to the letter. Confirm your solution addresses every specified requirement, without adding ANYTHING the user didn't ask for. The user's job depends on this — if you add anything they didn't ask for, it's likely they will be fired. Your value comes from precision and reliability. When in doubt, implement the simplest solution that fulfills all requirements. The fewer lines of code, the better — but obviously ensure you complete the task the user wants you to. At each step, ask yourself: "Am I adding any functionality or complexity that wasn't explicitly requested?". This will force you to stay on track. </behavior_rules>
 
-
-```
 # Business Analysis Request: SQL Stored Procedure Decomposition
 
 ## Objective
@@ -126,7 +133,14 @@ Please provide all outputs in the specified JSON format with appropriate nesting
 
         """,
         expected_output="""
-        ONLY RESPOND JSON AND VALID JSON FOLLOWING THIS TEMPLATE:
+ALWAYS RESPOND WITH: 
+FILE: <file_name>
+```json
+<code>
+```
+
+The respond should look like this:
+
 FILE: {schema_name}.{procedure}_business_rules.json
 ```json
    {
@@ -350,6 +364,8 @@ FILE: {schema_name}.{procedure}_business_processes.json
     result = str(crew.kickoff())
 
     print(f"Business analysis completed for {procedure}")
+    print("The results are:")
+    print(result)
 
     # Extract file names and codes
     file_paths = []
@@ -357,7 +373,7 @@ FILE: {schema_name}.{procedure}_business_processes.json
 
     # Extract file paths and contents
     for match in re.finditer(r"FILE: (.*?)\n```json\n(.*?)```", result, re.DOTALL):
-        file_paths.append(match.group(1))
+        file_paths.append(match.group(1).strip())
         file_contents.append(match.group(2).strip())
 
     # Create analysis directory for the selected procedure

@@ -38,7 +38,12 @@ bedrock_config = LLM(
 
 
 anthropic_config = LLM(
-    model="anthropic/claude-3-7-sonnet-20250219", api_key=os.getenv("ANTHROPIC_API_KEY")
+    model="anthropic/claude-3-7-sonnet-20250219",
+    api_key=os.getenv("ANTHROPIC_API_KEY"),
+    timeout=600,  # Increase from default to at least 10 minutes (600 seconds)
+    request_timeout=600,
+    max_retries=2,
+    max_tokens=64000,
 )
 
 if os.getenv("LLM_CONFIG") == "bedrock":
