@@ -35,15 +35,16 @@ for procedure in procedures:
     schema_name = procedure.name.split(".")[0] if "." in procedure.name else "dbo"
     full_procedure_name = procedure.name
 
-    # Get table dependencies
+    # Get all dependencies (tables, views, functions, procedures, triggers)
     cursor.execute(
         f"""
     SELECT 
-        ISNULL(referenced_schema_name, 'dbo') + '.' + referenced_entity_name AS table_name
+        ISNULL(OBJECT_SCHEMA_NAME(d.referenced_id), 'dbo') + '.' + OBJECT_NAME(d.referenced_id) AS referenced_name,
+        o.type_desc AS object_type
     FROM sys.sql_expression_dependencies d
-    JOIN sys.objects o ON d.referencing_id = o.object_id
-    JOIN sys.tables t ON d.referenced_id = t.object_id
+    JOIN sys.objects o ON d.referenced_id = o.object_id
     WHERE OBJECT_ID('{full_procedure_name}') = d.referencing_id
+    AND d.referenced_id IS NOT NULL
     """
     )
 
@@ -51,39 +52,122 @@ for procedure in procedures:
     dependency_list = []
 
     for dep in dependencies:
-        table_name = dep.table_name
+        referenced_name = dep.referenced_name
+        object_type = dep.object_type
 
-        # Get column metadata for each dependency
-        cursor.execute(
-            f"""
-        SELECT 
-            c.name AS column_name,
-            t.name AS data_type,
-            c.max_length,
-            c.precision,
-            c.scale,
-            c.is_nullable
-        FROM sys.columns c
-        JOIN sys.types t ON c.user_type_id = t.user_type_id
-        WHERE c.object_id = OBJECT_ID('{table_name}')
-        ORDER BY c.column_id
-        """
-        )
+        # Process based on object type
+        if object_type == "USER_TABLE":
+            # Get column metadata for tables
+            cursor.execute(
+                f"""
+            SELECT 
+                c.name AS column_name,
+                t.name AS data_type,
+                c.max_length,
+                c.precision,
+                c.scale,
+                c.is_nullable
+            FROM sys.columns c
+            JOIN sys.types t ON c.user_type_id = t.user_type_id
+            WHERE c.object_id = OBJECT_ID('{referenced_name}')
+            ORDER BY c.column_id
+            """
+            )
 
-        columns = cursor.fetchall()
-        column_metadata = [
-            {
-                "name": col.column_name,
-                "data_type": col.data_type,
-                "max_length": col.max_length,
-                "precision": col.precision,
-                "scale": col.scale,
-                "is_nullable": col.is_nullable,
-            }
-            for col in columns
-        ]
+            columns = cursor.fetchall()
+            column_metadata = [
+                {
+                    "name": col.column_name,
+                    "data_type": col.data_type,
+                    "max_length": col.max_length,
+                    "precision": col.precision,
+                    "scale": col.scale,
+                    "is_nullable": col.is_nullable,
+                }
+                for col in columns
+            ]
 
-        dependency_list.append({"table_name": table_name, "columns": column_metadata})
+            dependency_list.append(
+                {"name": referenced_name, "type": "TABLE", "columns": column_metadata}
+            )
+
+        elif object_type == "VIEW":
+            # Get column metadata for views
+            cursor.execute(
+                f"""
+            SELECT 
+                c.name AS column_name,
+                t.name AS data_type,
+                c.max_length,
+                c.precision,
+                c.scale,
+                c.is_nullable
+            FROM sys.columns c
+            JOIN sys.types t ON c.user_type_id = t.user_type_id
+            WHERE c.object_id = OBJECT_ID('{referenced_name}')
+            ORDER BY c.column_id
+            """
+            )
+
+            columns = cursor.fetchall()
+            column_metadata = [
+                {
+                    "name": col.column_name,
+                    "data_type": col.data_type,
+                    "max_length": col.max_length,
+                    "precision": col.precision,
+                    "scale": col.scale,
+                    "is_nullable": col.is_nullable,
+                }
+                for col in columns
+            ]
+
+            dependency_list.append(
+                {"name": referenced_name, "type": "VIEW", "columns": column_metadata}
+            )
+
+        elif object_type in (
+            "SQL_STORED_PROCEDURE",
+            "SQL_INLINE_TABLE_VALUED_FUNCTION",
+            "SQL_SCALAR_FUNCTION",
+            "SQL_TABLE_VALUED_FUNCTION",
+        ):
+            # For procedures and functions, just store the reference
+            dependency_type = (
+                "PROCEDURE" if object_type == "SQL_STORED_PROCEDURE" else "FUNCTION"
+            )
+
+            # For functions, get the definition
+            if dependency_type == "FUNCTION":
+                cursor.execute(
+                    f"""
+                SELECT 
+                    m.definition
+                FROM sys.sql_modules m
+                WHERE m.object_id = OBJECT_ID('{referenced_name}')
+                """
+                )
+                definition_row = cursor.fetchone()
+                definition = definition_row.definition if definition_row else None
+
+                dependency_list.append(
+                    {
+                        "name": referenced_name,
+                        "type": dependency_type,
+                        "definition": definition,
+                    }
+                )
+            else:
+                dependency_list.append(
+                    {"name": referenced_name, "type": dependency_type}
+                )
+
+        elif object_type == "SQL_TRIGGER":
+            dependency_list.append({"name": referenced_name, "type": "TRIGGER"})
+
+        else:
+            # For any other object types
+            dependency_list.append({"name": referenced_name, "type": object_type})
 
     procedure_dependencies.append(
         {"name": full_procedure_name, "dependencies": dependency_list}
@@ -93,6 +177,7 @@ for procedure in procedures:
     )
 
 # Save procedures to JSON file
+os.makedirs("output/data", exist_ok=True)
 with open("output/data/procedure_dependencies.json", "w") as f:
     json.dump(procedure_dependencies, f, indent=4)
 

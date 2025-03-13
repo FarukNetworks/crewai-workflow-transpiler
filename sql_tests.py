@@ -54,6 +54,7 @@ elif os.getenv("LLM_CONFIG") == "anthropic":
 else:
     llm_config = openai_config
 
+
 # Create a coding agent
 agent = Agent(
     role="tSQLt Developer",
@@ -89,11 +90,23 @@ for procedure in procedures:
         with open(f"output/analysis/{procedure}/{procedure}_meta.json", "r") as f:
             meta_data = json.load(f)
 
-        # Read business logic from JSON file
+        # business_rules
         with open(
-            f"output/analysis/{procedure}/{procedure}_business_logic.json", "r"
+            f"output/analysis/{procedure}/{procedure}_business_rules.json", "r"
         ) as f:
-            business_logic = json.load(f)
+            business_rules = json.load(f)
+
+        # business_functions
+        with open(
+            f"output/analysis/{procedure}/{procedure}_business_functions.json", "r"
+        ) as f:
+            business_functions = json.load(f)
+
+        # business_processes
+        with open(
+            f"output/analysis/{procedure}/{procedure}_business_processes.json", "r"
+        ) as f:
+            business_processes = json.load(f)
 
         # Read integration test spec from JSON file
         with open(
@@ -150,14 +163,15 @@ GO
             # Create a task that requires code execution
             task = Task(
                 description=f"""
+                You are tasked to create tSQLt unit test based on this {procedure} stored procedure and following the test scenario. 
                 NOTE: EXEC tSQLt.NewTestClass test_{procedure} is already created, so don't include it in your code but follow the naming. 
-                You are tasked to create test scenario based on this {procedure} stored procedure. 
+
 
                 STORED PROCEDURE CODE:
                 {procedure_code}   
 
-                PROCEDURE META: 
-                {meta_data}
+                DEPENDENCIES:
+                {dependencies}
 
                 This is test scenario {scenarioId} named {name}. 
                 
@@ -176,24 +190,24 @@ GO
                 VERIFICATION:
                 {verification}
                 
-                DEPENDENCIES:
-                {dependencies}
-                
                 VARIATIONS:
                 {variations}
 
                 
                 """,
                 expected_output="""
-                tSQLt code without any comments. Please do not create any new class it's already provided. EXEC tSQLt.NewTestClass test_{procedure}. 
-                Begin the code like this: 
-                CREATE PROCEDURE [test_{procedure}].[test_{procedure}_{scenarioId}].
-                After Each procedure add GO 
-                create and print before and after to have snapshots. 
-                Use SELECT * INTO #BeforeTableName and SELECT * INTO #AfterTableName
-                Then print the before and after tables like this: 
-                SELECT *, '#BeforeTableName' AS table_name FROM #BeforeTableName 
-                SELECT *, '#AfterTableName' AS table_name FROM #AfterTableName
+                Provide tSQLt code without any comments. 
+                Please do not create any new class it's already provided. EXEC tSQLt.NewTestClass test_{procedure}. 
+                -- Begin the code like this: 
+                       CREATE PROCEDURE [test_{procedure}].[test_{procedure}_{scenarioId}].
+                -- Clearly specify the schema of every object to prevent confusion.
+                -- When calling tSQLt.FakeTable, never use the @SchemaName parameter (deprecated).
+                -- Use unique, meaningful mock data identifiers clearly linked to test scenarios
+                -- Separate each CREATE PROCEDURE, EXEC calls, and FUNCTION definitions clearly with "GO"
+                -- Verify output by counting inserted rows or verifying specific column values
+                -- Always create snapshots of tables before and after executing procedure.
+                -- Print snapshot comparisons clearly
+                -- Do not write any execution code in the output and focus only on creating the test. 
                 """,
                 agent=agent,
             )

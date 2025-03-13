@@ -38,6 +38,7 @@ def main():
         "sql_tests.py",
         "implementation_executor.py",
         "document_process.py",
+        "cross_validation_agent.py",
     ]
 
     for script in scripts:
