@@ -4,6 +4,7 @@ import json
 import boto3
 import dotenv
 import re
+from shared.get_dependencies import get_dependencies
 
 dotenv.load_dotenv()
 
@@ -58,16 +59,7 @@ agent = Agent(
 
 # Create Crew For Each Discovered Stored Procedure
 for procedure in procedures:
-    dependency_folder = os.path.join("output/data", "procedure_dependencies.json")
-    with open(dependency_folder, "r") as f:
-        all_dependencies = json.load(f)
-
-    # Find the procedure with matching name in the dependencies list
-    dependencies = []
-    for proc in all_dependencies:
-        if proc.get("name") == procedure:
-            dependencies = proc.get("dependencies", [])
-            break
+    dependencies = get_dependencies(procedure)
 
     # Procedure Definition from SQL file
     with open(f"output/sql_raw/{procedure}/{procedure}.sql", "r") as f:

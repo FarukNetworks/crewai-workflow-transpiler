@@ -3,3 +3,4 @@ output/
 .conda/
 __pycache__
 .venv
+*.zip

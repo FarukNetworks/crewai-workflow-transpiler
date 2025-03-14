@@ -1,8 +1,10 @@
 from crewai import Crew, Agent, Task, LLM
+from shared.get_dependencies import get_dependencies
 import os
 import json
 import boto3
 import dotenv
+import re
 
 dotenv.load_dotenv()
 
@@ -13,6 +15,7 @@ if os.path.exists("output/analysis"):
         folder
         for folder in os.listdir("output/analysis")
         if os.path.isdir(os.path.join("output/analysis", folder))
+        and folder != "arm.stp_AddAuditRecord"
     ]
 print(f"Discovered procedures: {procedures}")
 
@@ -62,16 +65,7 @@ for procedure in procedures:
     with open(f"output/sql_raw/{procedure}/{procedure}.sql", "r") as f:
         procedure_definition = f.read()
 
-    dependency_folder = os.path.join("output/data", "procedure_dependencies.json")
-    with open(dependency_folder, "r") as f:
-        all_dependencies = json.load(f)
-
-    # Find the procedure with matching name in the dependencies list
-    dependencies = []
-    for proc in all_dependencies:
-        if proc.get("name") == procedure:
-            dependencies = proc.get("dependencies", [])
-            break
+    dependencies = get_dependencies(procedure)
 
     # business_rules
     with open(f"output/analysis/{procedure}/{procedure}_business_rules.json", "r") as f:
@@ -92,269 +86,204 @@ for procedure in procedures:
     # Create a task that requires code execution
     task = Task(
         description=f"""
-# Integration Test Specification Prompt for SQL-to-C# Migration
+I'm migrating a SQL stored procedure to C# and need a comprehensive test suite to ensure feature parity. Please analyze the provided stored procedure and related files to create detailed test specifications in JSON format.
 
-## Purpose
+I've provided:
+1. SQL stored procedure source code - [{procedure_definition}]
+2. Business rules documentation - [{business_rules}]
+3. Business functions documentation - [{business_functions}]
+4. Business process documentation - [{business_processes}]
+5. Dependencies information - [{dependencies}]
 
-You are tasked with creating a comprehensive integration test specification in JSON format that will be used to verify feature parity between a SQL stored procedure and its C# repository pattern implementation.
+COVERAGE REQUIREMENTS:
+1. Every business rule must have AT MINIMUM:
+   - One test for the normal/expected case
+   - Tests for ALL boundary conditions mentioned in the rule
+   - Tests for ALL edge cases mentioned in the rule
 
-## Inputs
+2. Every business function must have:
+   - A test validating the basic function operation
+   - Tests for interactions between multiple rules within the function
+   - Tests for any conditional logic or branching in the function
 
-You have been provided with:
+3. The overall process must have:
+   - A test for the complete happy path flow
+   - Tests for each alternative path or condition
+   - Tests for error handling and exceptional conditions
 
-## Input Files
-1. Contains extracted business rules with detailed metadata - [{business_rules}]
-2. Contains business functions that represent logical operations - [{business_functions}]
-3. Contains the overall process flow with error handling and transaction boundaries - [{business_processes}]
-4. The original SQL stored procedure (for reference) - [{procedure_definition}]
+4. Exploratory testing must include:
+   - Tests for transaction behavior and rollback scenarios
+   - Tests for SQL-specific behaviors that might behave differently in C#
+   - Tests for implicit dependencies or assumptions in the code
+   - Tests for NULL handling and edge data conditions
+   - Tests for performance characteristics if relevant
 
-## Your Task
+For each identified test case, please create a separate JSON test specification that guarantees consistent test execution in both SQL and C# environments.
 
-Create a detailed JSON specification for integration tests that will verify complete feature parity between the SQL stored procedure and C# implementation. The specification should define all aspects of the tests without providing actual implementation code.
+IMPORTANT: Each JSON object MUST contain:
+1. EXACT test data with specific values for every field 
+2. SPECIFIC configuration settings
+3. CONCRETE validation criteria
+4. For exploratory tests, include the "exploratoryReason" field (omit this field for non-exploratory tests)
+5. Include only fields that are relevant to the specific test case (omit optional fields if not needed)
+6. All actions must be explicitly stated (create, verify, update, delete, etc.)
+7. All validation operations must be explicitly defined (exists, equals, etc.)
 
+IMPORTANT: Make sure you adhere to exact data types for each entity. 
+1. Dependencies file contains exact data types for each entity. 
+2. You MUST use the exact data types for each entity. 
+3. You MUST use the exact column names for each entity. 
+4. You MUST use the exact data type for each column test data sample.
+5. In [testDataSetup] every attributes value MUST match the exact data type of that attribute, and Values MUST be in the exact format of that data type.
 
-## Coverage Requirements
+IMPORTANT:
+1. For now, give me one test for business rule, one for business function and one for business process. Add one exploratory test too. 
 
-1. **Full Process Coverage**: Include scenarios that test every business process identified in the technical JSON
+Please create separate JSON objects for all required test cases, ensuring COMPLETE COVERAGE of all business rules, functions, processes, and potential edge cases. For each business rule or function identified in the documentation, there must be at least one corresponding test specification.
 
-2. **Complete Workflow Verification**: Each scenario should verify the entire workflow, not just individual components
-
-3. **End-to-End Testing**: Focus on testing complete business processes rather than isolated business rules
-
-4. **Data Variation**: Include specifications for different data conditions to thoroughly test the procedure
-
-5. **Parameter Variations**: Specify tests for all meaningful parameter combinations
-
-6. **Edge Cases**: Include scenario variations for boundary conditions
-
-7. **Feature Parity Focus**: Every test scenario should include specific verification steps to confirm identical behavior between SQL and C# implementations
-
-## Test Scenario Generation Guidelines
-
-1. **Process-Driven**: Base test scenarios on the business processes identified in the technical JSON
-
-2. **Data-Dependent Cases**: Identify key data conditions that affect behavior
-
-3. **Parameter Space**: Create variations based on different parameter combinations
-
-4. **Verification Points**: Define specific points to verify database state and outputs
-
-5. **Exceptional Flows**: Include scenarios that test error handling and edge cases
-
-## Final Verification Steps
-
-Before submitting your specification, verify:
-
-1. Have you included scenarios for every business process in the technical JSON?
-2. Does each scenario have clear verification steps for feature parity?
-3. Have you defined the required test data for each scenario?
-4. Does the coverage matrix demonstrate complete coverage of processes and parameters?
-5. Are the test data scenarios sufficient to test all key data conditions?
-
-Your output should be a valid, well-structured JSON document that follows the schema above, with detailed specifications for comprehensive integration testing.
+Create one complete, valid JSON object per test case, and ensure it contains enough detail that both tSQLt and C# implementations would use IDENTICAL test data.
 
 
         """,
         expected_output="""
-   Your output should follow this structure:
-
+ONLY RESPOND IN JSON FORMAT  
+Each JSON test specification should follow this structure:
 ```json
+"testScenarios": [
 {
-  "integrationTestSpecification": {
-    "procedureName": "Schema.ProcedureName",
-    "description": "Overall description of the procedure's purpose",
-    "testEnvironmentRequirements": {
-      "databaseObjects": [
-        {
-          "type": "table/view/procedure",
-          "name": "ObjectName",
-          "required": true,
-          "purpose": "How this object is used in testing"
-        }
-      ],
-      "externalDependencies": [
-        {
-          "name": "DependencyName",
-          "type": "Configuration/Service/Function",
-          "purpose": "How this dependency is used"
-        }
-      ],
-      "dataResetStrategy": {
-        "approach": "Description of recommended reset approach",
-        "tables": ["Tables that need resetting between tests"]
-      }
-    },
-    "testDataRequirements": {
-      "entities": [
-        {
-          "entityName": "EntityName",
-          "baseProperties": {
-            "Property1": "default value",
-            "Property2": "default value" 
-          },
-          "relationships": [
-            {
-              "relatedEntity": "RelatedEntityName",
-              "relationship": "one-to-many/many-to-one",
-              "required": true
-            }
-          ],
-          "scenarios": [
-            {
-              "scenarioName": "Description of data variation",
-              "propertyOverrides": {
-                "Property1": "scenario-specific value"
-              }
-            }
-          ]
-        }
-      ],
-      "dataVolumes": {
-        "minimum": "Minimum data volume for valid testing",
-        "recommended": "Recommended data volume for thorough testing" 
-      }
-    },
-    "testScenarios": [
-      {
-        "scenarioId": "SCEN-001",
-        "name": "Descriptive name of scenario",
-        "businessProcesses": ["Business process IDs from technical JSON"],
-        "description": "Detailed description of what this scenario tests",
-        "inputs": {
-          "parameters": [
-            {
-              "name": "ParameterName",
-              "value": "Parameter value or expression",
-              "purpose": "Why this value is chosen"
-            }
-          ],
-          "testData": [
-            {
-              "entity": "EntityName",
-              "scenario": "ScenarioName or custom specification",
-              "count": "Number of entities needed",
-              "customCriteria": "Any specific criteria for this test"
-            }
-          ]
-        },
-        "execution": {
-          "executionOrder": ["Steps to execute"],
-          "transactionHandling": "How transactions should be handled"
-        },
-        "verification": {
-          "databaseState": [
-            {
-              "table": "TableName",
-              "verificationQuery": "Query to retrieve results",
-              "expectedResults": {
-                "type": "rowCount/specificValues/dataShape",
-                "details": "Expected outcome details"
-              }
-            }
-          ],
-          "outputValidation": [
-            {
-              "outputType": "returnValue/resultSet/sideEffect",
-              "validation": "How to validate this output"
-            }
-          ],
-          "exceptionalCases": [
-            {
-              "condition": "When this condition occurs",
-              "expectedBehavior": "How the system should behave"
-            }
-          ]
-        },
-        "variations": [
-          {
-            "variationId": "VAR-001",
-            "description": "Description of this variation",
-            "parameterChanges": {"Parameter": "New value"},
-            "expectedDifferences": "How results should differ"
-          }
-        ]
-      }
-    ],
-    "parityValidation": {
-      "comparisonApproach": "How to compare SQL and C# results",
-      "tolerances": {
-        "numericValues": "Accepted tolerance for numeric differences",
-        "timing": "Accepted tolerance for timing differences"
-      },
-      "reconciliationStrategy": "How to handle and report differences"
-    },
-    "testExecutionSequence": [
-      {
-        "phase": "Phase name",
-        "scenarios": ["SCEN-001", "SCEN-002"],
-        "dependsOn": "Previous phase if applicable"
-      }
-    ]
+  "testId": "A unique identifier",
+  "type": "Quick or Thorough",
+  "category": "BusinessRule, BusinessFunction, Process, or Exploratory",
+  "ruleFunction": "For business rules/functions/processes: use exact identifier (BR-001, BF-003, PROC-001). For exploratory tests: use 'EXPL'",
+  "exploratoryReason": "ONLY for exploratory tests: detailed explanation of why this test is needed",
+  "description": "What aspect is being tested",
+  "executionOrder": {
+    "runAfter": ["Array of test IDs that must execute before this test"],
+    "runBefore": ["Array of test IDs that must execute after this test"]
   },
-  "coverageMatrix": {
-    "businessProcesses": [
-      {
-        "processId": "PROC-001",
-        "scenarios": ["SCEN-001", "SCEN-002"],
-        "coveragePercentage": 100
-      }
-    ],
-    "parameterCombinations": [
-      {
-        "parameters": "Description of parameters tested",
-        "scenarios": ["SCEN-001", "VAR-001"]
-      }
-    ],
-    "dataConditions": [
-      {
-        "condition": "Description of data condition",
-        "scenarios": ["SCEN-002"]
-      }
-    ]
-  },
-  "testDataScenarios": [
+  "testDataSetup": [
     {
-      "scenarioName": "ScenarioName",
-      "description": "Description of this data scenario",
-      "entities": [
-        {
-          "entityName": "EntityName",
-          "count": "Number of entities",
-          "properties": {
-            "Property1": "Value or range",
-            "Property2": "Value or range"
-          }
-        }
+      "entity": "Name of entity (e.g., Visit)",
+      "identifier": "A unique identifier for this test entity",
+      "action": "create|verify|update|delete",
+      "dependsOn": [
+        {"entity": "Related entity", "identifier": "ID of related entity", "relationship": "belongsTo|contains|references"}
       ],
-      "relationships": [
-        {
-          "description": "Description of relationship setup"
-        }
-      ]
+      "attributes": {
+        "attribute1": {"value": "exact value", "type": "SQL data type"},
+        "attribute2": {"value": "exact value", "type": "SQL data type"}
+      }
+    }
+  ],
+  "systemConfiguration": [
+    {
+      "setting": "Configuration setting name",
+      "action": "set|verify|delete",
+      "value": "Exact value",
+      "type": "SQL data type"
+    }
+  ],
+  "testParameters": [
+    {
+      "name": "Parameter name",
+      "action": "input",
+      "value": "Exact value",
+      "type": "SQL data type"
+    }
+  ],
+  "dataVolume": {
+    "size": "small|medium|large",
+    "recordCount": "Number of records if applicable",
+    "generationStrategy": "fixed|random"
+  },
+  "validationCriteria": [
+    {
+      "entity": "Entity to validate",
+      "operation": "exists|notExists|equals|notEquals|greaterThan|lessThan|contains",
+      "condition": "Exact condition to check",
+      "expectedValue": "Precise expected value or result"
+    }
+  ],
+  "expectedExceptions": {
+    "shouldThrow": true|false,
+    "exceptionType": "Type of exception expected",
+    "messageContains": "Expected error message content"
+  },
+  "performanceCriteria": {
+    "maxExecutionTimeMs": "Maximum acceptable execution time in milliseconds",
+    "maxMemoryUsageMb": "Maximum acceptable memory usage in megabytes"
+  },
+  "cleanup": [
+    {
+      "entity": "Entity to clean up",
+      "identifier": "Identifier of entity to remove or reset",
+      "action": "delete|reset|restore"
     }
   ]
-}
+},
+]
 ```
+
 """,
         agent=agent,
     )
 
-    # Create a crew and add the task
+    # # Create a crew and add the task
     crew = Crew(agents=[agent], tasks=[task])
 
-    # Execute the crew
+    # # Execute the crew
     result = str(crew.kickoff())
 
-    print(f"Integration test spec analysis completed for {procedure}")
+    # print(f"Integration test spec analysis completed for {procedure}")
 
-    # Create analysis directory for the selected procedure
+    # # Create analysis directory for the selected procedure
     analysis_dir = os.path.join("output/analysis", procedure)
     os.makedirs(analysis_dir, exist_ok=True)
 
-    # Save the result to a JSON file
+    # # Save the result to a JSON file
     with open(
         os.path.join(analysis_dir, f"{procedure}_integration_test_spec.json"), "w"
     ) as f:
         f.write(result.replace("```json", "").replace("```", ""))
 
-print("Integration test spec analysis completed for all procedures.")
+    # Read the JSON file
+    with open(
+        os.path.join(analysis_dir, f"{procedure}_integration_test_spec.json"), "r"
+    ) as f:
+        integration_json_file = json.load(f)
+
+    # Function to validate GUID format
+    def is_valid_guid(guid):
+        guid_pattern = re.compile(
+            r"^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$"
+        )
+        return bool(guid_pattern.match(guid))
+
+    # Function to fix an invalid GUID by replacing non-hex characters with '1'
+    def fix_guid(guid):
+        # Allow only hexadecimal characters and dashes
+        fixed_guid = "".join(c if c in "0123456789ABCDEFabcdef-" else "1" for c in guid)
+        return fixed_guid.upper()  # Return uppercase valid GUID
+
+    # Iterate over test scenarios and fix invalid GUIDs
+    for test in integration_json_file["testScenarios"]:
+        for testDataSetup in test["testDataSetup"]:
+            for attribute, details in testDataSetup["attributes"].items():
+                if details["type"] == "uniqueidentifier":
+                    original_guid = details["value"]
+                    if not is_valid_guid(original_guid):
+                        fixed_guid = fix_guid(original_guid)
+                        print(
+                            f"Invalid GUID found: {original_guid} → Fixed: {fixed_guid}"
+                        )
+                        details["value"] = fixed_guid  # Replace invalid GUID
+
+    # Save the corrected JSON back to file
+    with open(
+        os.path.join(analysis_dir, f"{procedure}_integration_test_spec.json"), "w"
+    ) as f:
+        json.dump(integration_json_file, f, indent=4)
+
+    print(
+        "✅ JSON file processed. Invalid GUIDs have been corrected and saved to 'fixed_integration_json_file.json'."
+    )

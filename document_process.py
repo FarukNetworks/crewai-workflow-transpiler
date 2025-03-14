@@ -22,9 +22,42 @@ if os.path.exists("output/analysis"):
     ]
 
 for procedure in procedures:
-    with open(f"output/analysis/{procedure}/{procedure}_business_logic.json", "r") as f:
-        business_logic = json.load(f)
+    # Load the separate business files instead of the combined business_logic.json
+    business_rules_path = f"output/analysis/{procedure}/{procedure}_business_rules.json"
+    business_functions_path = (
+        f"output/analysis/{procedure}/{procedure}_business_functions.json"
+    )
+    business_processes_path = (
+        f"output/analysis/{procedure}/{procedure}_business_processes.json"
+    )
 
+    # Initialize dictionaries to store the data
+    business_rules = {}
+    business_functions = {}
+    business_processes = {}
+
+    # Load business rules if file exists
+    if os.path.exists(business_rules_path):
+        with open(business_rules_path, "r") as f:
+            business_rules = json.load(f)
+    else:
+        print(f"⚠️ Business rules file not found for {procedure}")
+
+    # Load business functions if file exists
+    if os.path.exists(business_functions_path):
+        with open(business_functions_path, "r") as f:
+            business_functions = json.load(f)
+    else:
+        print(f"⚠️ Business functions file not found for {procedure}")
+
+    # Load business processes if file exists
+    if os.path.exists(business_processes_path):
+        with open(business_processes_path, "r") as f:
+            business_processes = json.load(f)
+    else:
+        print(f"⚠️ Business processes file not found for {procedure}")
+
+    # Load integration test specification
     with open(
         f"output/analysis/{procedure}/{procedure}_integration_test_spec.json", "r"
     ) as f:
@@ -39,11 +72,12 @@ for procedure in procedures:
             print(f"⚠️ No testScenarios found in integration test spec for {procedure}")
             testScenarios = []
 
-        try:
-            businessProcessesJson = business_logic["technical"]["businessProcesses"]
-        except KeyError:
-            print(f"⚠️ No businessProcesses found in business logic for {procedure}")
-            businessProcessesJson = []
+        # Get business processes from the separate file
+        businessProcessesJson = business_processes.get("businessProcesses", [])
+        if not businessProcessesJson:
+            print(
+                f"⚠️ No businessProcesses found in business processes file for {procedure}"
+            )
 
         discoveredBusinessProcesses = []
 
@@ -59,8 +93,12 @@ for procedure in procedures:
 
             for businessProc in businessProcessesInsideScenario:
                 for businessProcess in businessProcessesJson:
-                    if businessProcess["processId"] == businessProc:
-                        businessProcessName = businessProcess["processName"]
+                    if (
+                        businessProcess["id"] == businessProc
+                    ):  # Changed from processId to id
+                        businessProcessName = businessProcess[
+                            "name"
+                        ]  # Changed from processName to name
                         businessProcessDescription = businessProcess["description"]
 
                         if businessProcessName not in [
@@ -406,6 +444,57 @@ for procedure in procedures:
 
                             scenario["testDataSnapshots"] = all_processed_test_data
 
+        # Add business rules and functions information to each business process
+        for bp in discoveredBusinessProcesses:
+            process_id = bp["processId"]
+
+            # Find the corresponding process in the business_processes file
+            process_details = None
+            for process in businessProcessesJson:
+                if process["id"] == process_id:
+                    process_details = process
+                    break
+
+            if process_details:
+                # Get the business rules associated with this process
+                rule_ids = []
+                for step in process_details.get("orchestration", {}).get("steps", []):
+                    rule_ids.extend(step.get("businessRules", []))
+
+                # Remove duplicates
+                rule_ids = list(set(rule_ids))
+
+                # Get the full details of each business rule
+                rules_details = []
+                for rule_id in rule_ids:
+                    for rule in business_rules.get("businessRules", []):
+                        if rule["id"] == rule_id:
+                            rules_details.append(rule)
+                            break
+
+                # Add the rules to the business process
+                bp["businessRules"] = rules_details
+
+                # Get the business functions associated with this process
+                function_ids = []
+                for step in process_details.get("orchestration", {}).get("steps", []):
+                    if step.get("functionId"):
+                        function_ids.append(step.get("functionId"))
+
+                # Remove duplicates
+                function_ids = list(set(function_ids))
+
+                # Get the full details of each business function
+                functions_details = []
+                for function_id in function_ids:
+                    for function in business_functions.get("businessFunctions", []):
+                        if function["id"] == function_id:
+                            functions_details.append(function)
+                            break
+
+                # Add the functions to the business process
+                bp["businessFunctions"] = functions_details
+
         # After processing all scenarios, save the result to a JSON file
         output_dir = f"output/analysis/{procedure}/processed"
         os.makedirs(output_dir, exist_ok=True)
@@ -452,6 +541,40 @@ def generate_markdown_from_json(procedure):
 
         markdown_content += f"## {bp_id} - {bp_name}\n\n"
         markdown_content += f"**Description**: {bp_description}\n\n"
+
+        # Add business rules section if available
+        if "businessRules" in bp and bp["businessRules"]:
+            markdown_content += "### Business Rules\n\n"
+            markdown_content += "| Rule ID | Name | Description |\n"
+            markdown_content += "|---------|------|-------------|\n"
+
+            for rule in bp["businessRules"]:
+                rule_id = rule.get("id", "Unknown")
+                rule_name = rule.get("name", "Unknown")
+                rule_description = rule.get("description", "No description available")
+                markdown_content += (
+                    f"| {rule_id} | {rule_name} | {rule_description} |\n"
+                )
+
+            markdown_content += "\n"
+
+        # Add business functions section if available
+        if "businessFunctions" in bp and bp["businessFunctions"]:
+            markdown_content += "### Business Functions\n\n"
+            markdown_content += "| Function ID | Name | Description |\n"
+            markdown_content += "|------------|------|-------------|\n"
+
+            for function in bp["businessFunctions"]:
+                function_id = function.get("id", "Unknown")
+                function_name = function.get("name", "Unknown")
+                function_description = function.get(
+                    "description", "No description available"
+                )
+                markdown_content += (
+                    f"| {function_id} | {function_name} | {function_description} |\n"
+                )
+
+            markdown_content += "\n"
 
         # Add a summary table of test scenarios
         markdown_content += "### Test Scenarios Summary\n\n"

@@ -6,6 +6,7 @@ import dotenv
 import os
 import sqlparse
 import json
+from shared.get_dependencies import get_dependencies
 
 
 dotenv.load_dotenv()
@@ -117,16 +118,7 @@ for procedure_name in selected_procedures:
     with open(os.path.join(sql_dir, f"{procedure_name}.sql"), "w") as f:
         f.write(procedure_definition)
 
-    # Get dependencies
-    with open(os.path.join("output/data", "procedure_dependencies.json"), "r") as f:
-        dependencies = json.load(f)
-
-    # Find the procedure with matching name in the dependencies list
-    dependencies = []
-    for proc in dependencies:
-        if proc.get("name") == procedure_name:
-            dependencies = proc.get("dependencies", [])
-            break
+    dependencies = get_dependencies(procedure_name)
 
     # Create a task that requires code execution
     data_analysis_task = Task(
@@ -162,6 +154,11 @@ Task Steps
         DEPENDENCIES: {dependencies}
         """,
         expected_output="""
+<behavior_rules> You have one mission: execute exactly what is requested. Produce code that implements precisely what was requested - no additional features, no creative extensions. Follow instructions to the letter. Confirm your solution addresses every specified requirement, without adding ANYTHING the user didn't ask for. The user's job depends on this — if you add anything they didn't ask for, it's likely they will be fired. Your value comes from precision and reliability. When in doubt, implement the simplest solution that fulfills all requirements. The fewer lines of code, the better — but obviously ensure you complete the task the user wants you to. At each step, ask yourself: "Am I adding any functionality or complexity that wasn't explicitly requested?". This will force you to stay on track. </behavior_rules>
+
+ONLY RESPOND IN JSON FORMAT
+<output_format>
+
 {
   "metadata": {
     "procedureName": "",
@@ -182,7 +179,9 @@ Task Steps
   "statementPurpose": [{"statementType": "statementType", "purpose": "purpose"}],
   "parameterUsage": [{"parameterName": "parameterName", "usage": "usage"}],
   "testValueCandidates": [{"parameterName": "parameterName", "testValues": ["testValue1", "testValue2"]}]
-}""",
+}
+</output_format>
+""",
         agent=coding_agent,
     )
 

@@ -1,0 +1,137 @@
+
+# tSQLt – Database Unit Testing Framework for SQL Server
+
+**tSQLt** is an open-source unit testing framework for T-SQL, allowing you to write tests in regular T-SQL for SQL Server (2005 SP2 and later). It brings the proven practices of unit testing into the database realm. With tSQLt, you can implement tests without leaving SQL Server, enabling you to verify that your database code works as expected.
+
+## Installation and Setup
+
+### Downloading and Installing tSQLt
+
+1. **Download tSQLt:** Download the latest tSQLt release from the official site.
+2. **Unzip the package:** Extract the downloaded zip file to a location on your machine.
+3. **Prepare the server:** Run the `PrepareServer.sql` script on your SQL Server.
+4. **Install the example database:** Execute the `Example.sql` script.
+
+### Running the Example Tests
+
+1. Open SSMS and switch context to `tSQLt_Example`.
+2. Run all tests using:
+   ```sql
+   EXEC tSQLt.RunAll;
+   ```
+
+3. Example output:
+   ```text
+   +----------------------+
+   |Test Execution Summary|
+   +--+------------------+
+   |1 |[TestName] Success|
+   |2 |[TestName] Failure|
+   ```
+
+### Installing tSQLt in Your Own Database
+
+To use tSQLt in your own database, run:
+
+```sql
+EXEC sp_executesql N'tSQLt.class.sql';
+```
+
+## Test Creation and Execution
+
+### NewTestClass
+
+Create a test class schema:
+
+```sql
+tSQLt.NewTestClass 'MyTestClass';
+```
+
+### RunAll
+
+Run all tests:
+
+```sql
+EXEC tSQLt.RunAll;
+```
+
+### Run
+
+Run specific tests:
+
+```sql
+EXEC tSQLt.Run 'MyTestClass';
+EXEC tSQLt.Run 'MyTestClass.[test_example]';
+```
+
+## Assertions
+
+### AssertEquals
+
+```sql
+tSQLt.AssertEquals @expected, @actual;
+```
+
+### AssertEqualsTable
+
+```sql
+tSQLt.AssertEqualsTable 'expected_table', 'actual_table';
+```
+
+### AssertObjectExists
+
+```sql
+tSQLt.AssertObjectExists 'dbo.MyTable';
+```
+
+## Expectations
+
+### ExpectException
+
+```sql
+tSQLt.ExpectException @ExpectedMessage = 'Expected error';
+```
+
+### ExpectNoException
+
+```sql
+tSQLt.ExpectNoException;
+```
+
+## Isolating Dependencies
+
+### FakeTable
+
+```sql
+tSQLt.FakeTable 'dbo.MyTable';
+```
+
+### SpyProcedure
+
+```sql
+tSQLt.SpyProcedure 'dbo.MyProcedure';
+```
+
+### RemoveObjectIfExists
+
+```sql
+tSQLt.RemoveObjectIfExists 'dbo.OldObject';
+```
+
+## Advanced Usage
+
+### ApplyTrigger
+
+```sql
+tSQLt.ApplyTrigger 'dbo.MyTable', 'MyTrigger';
+```
+
+### ApplyConstraint
+
+```sql
+tSQLt.ApplyConstraint 'dbo.MyTable', 'MyConstraint';
+```
+
+---
+
+For full documentation, visit [tSQLt Official Site](https://tsqlt.org/full-user-guide/).

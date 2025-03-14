@@ -4,6 +4,7 @@ import json
 import boto3
 import dotenv
 import re
+from shared.get_dependencies import get_dependencies
 
 dotenv.load_dotenv()
 
@@ -69,16 +70,7 @@ for procedure in procedures:
     with open(f"output/sql_raw/{procedure}/{procedure}.sql", "r") as f:
         sql_code = f.read()
 
-    dependency_folder = os.path.join("output/data", "procedure_dependencies.json")
-    with open(dependency_folder, "r") as f:
-        all_dependencies = json.load(f)
-
-    # Find the procedure with matching name in the dependencies list
-    dependencies = []
-    for proc in all_dependencies:
-        if proc.get("name") == procedure:
-            dependencies = proc.get("dependencies", [])
-            break
+    dependencies = get_dependencies(procedure)
 
     # Procedure Definition from SQL file
     with open(f"output/sql_raw/{procedure}/{procedure}.sql", "r") as f:
@@ -138,6 +130,12 @@ FILE: <file_name>
 ```json
 <code>
 ```
+
+Response should have 3 files: 
+
+FILE: {schema_name}.{procedure}_business_rules.json
+FILE: {schema_name}.{procedure}_business_functions.json
+FILE: {schema_name}.{procedure}_business_processes.json
 
 The respond should look like this:
 
